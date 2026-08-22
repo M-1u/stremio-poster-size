@@ -2,7 +2,7 @@
  * @name PosterSize
  * @description Adds a size control (S/M/L/XL) to Discover and Library so you can choose how big the posters/cards are. Your choice is remembered.
  * @updateUrl none
- * @version 1.0.1
+ * @version 1.0.7
  * @author meli & Claude
  */
 
@@ -17,6 +17,8 @@
         { key: "xl", label: "XL", minWidth: 235 }
     ];
     const DEFAULT_SIZE = "m";
+
+    const ICON_SIZE = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 14v6h6M20 10V4h-6M20 4l-7 7M4 20l7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
     // Shared micro-kit so multiple Stremio Enhanced plugins from the same
     // author don't each spin up their own document-wide MutationObserver,
@@ -93,6 +95,40 @@
                 style.id = "sek-filter-wrap-fix";
                 style.textContent = '[class*="selectable-inputs-container-"] { flex-wrap: wrap !important; row-gap: 10px; }';
                 document.head.appendChild(style);
+            },
+            // One shared look for every icon-only button any of these plugins
+            // adds to a filter row, sized/colored to match Stremio's own
+            // square icon buttons (the filter/layout icons already there)
+            // instead of each plugin inventing its own smaller, bordered
+            // button style.
+            ensureIconButtonStyle() {
+                if (document.getElementById("sek-icon-btn-style")) return;
+                const style = document.createElement("style");
+                style.id = "sek-icon-btn-style";
+                style.textContent = `
+                    .sek-icon-btn { display: inline-flex; align-items: center; justify-content: center; align-self: center; width: 40px; height: 40px; vertical-align: middle; background: rgba(255,255,255,0.08); color: #e4e4e9; border: none; border-radius: 10px; cursor: pointer; transition: background .15s ease, color .15s ease, transform .1s ease; user-select: none; flex-shrink: 0; }
+                    .sek-icon-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+                    .sek-icon-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
+                    .sek-icon-btn:active { transform: scale(0.94); }
+                    .sek-icon-btn.sek-icon-btn-active { background: rgba(123,91,245,0.35); color: #fff; }
+                `;
+                document.head.appendChild(style);
+            },
+            // On Library, the sort tabs ("A-Z", "Watched", etc.) live inside
+            // one single horizontally-scrolling wrapper, not as separate flex
+            // items - so appending our buttons after it always pushes them
+            // onto their own wrapped line below, even when there's visible
+            // room left. Inserting before that wrapper instead lets our
+            // buttons share the same line as the sort tabs, since the
+            // wrapper can shrink/scroll internally rather than needing fixed
+            // space of its own.
+            insertBeforeChips(inputsContainer, el) {
+                const chips = inputsContainer.querySelector('[class*="horizontal-scroll-"]');
+                if (chips) {
+                    inputsContainer.insertBefore(el, chips);
+                } else {
+                    inputsContainer.appendChild(el);
+                }
             }
         };
 
@@ -122,13 +158,11 @@
         const style = document.createElement("style");
         style.id = `${NS}-styles`;
         style.textContent = `
-            .${NS}-group { display: inline-flex; align-items: center; gap: 2px; margin-left: 1.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 7px; padding: 3px; flex-shrink: 0; }
-            .${NS}-opt { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; padding: 4px 8px; border-radius: 5px; font-size: 12px; font-weight: 600; color: #b3b3bd; cursor: pointer; user-select: none; white-space: nowrap; transition: background .15s ease, color .15s ease; }
-            .${NS}-opt:hover { color: #fff; background: rgba(255,255,255,0.08); }
-            .${NS}-opt.${NS}-active { background: #7B5BF5; color: #fff; }
+            .${NS}-btn { margin-left: 8px; }
         `;
         document.head.appendChild(style);
         sek.ensureFilterRowWrap();
+        sek.ensureIconButtonStyle();
     }
 
     const waitForElm = sek.waitForElm;
@@ -148,16 +182,14 @@
         itemsContainer.style.gridTemplateColumns = `repeat(auto-fill, minmax(${size.minWidth}px, 1fr))`;
     }
 
-    function renderControl(groupEl, itemsContainer, sizeKey) {
-        groupEl.innerHTML = SIZES.map((s) => `<span class="${NS}-opt ${s.key === sizeKey ? NS + "-active" : ""}" data-size="${s.key}">${s.label}</span>`).join("");
-        groupEl.querySelectorAll(`.${NS}-opt`).forEach((el) => {
-            el.addEventListener("click", () => {
-                const key = el.getAttribute("data-size");
-                saveSize(key);
-                applySize(itemsContainer, key);
-                renderControl(groupEl, itemsContainer, key);
-            });
-        });
+    function nextSizeKey(sizeKey) {
+        const idx = SIZES.findIndex((s) => s.key === sizeKey);
+        return SIZES[(idx + 1) % SIZES.length].key;
+    }
+
+    function renderButton(btnEl, sizeKey) {
+        btnEl.innerHTML = ICON_SIZE;
+        btnEl.title = `Poster size: ${SIZES.find((s) => s.key === sizeKey).label}`;
     }
 
     let cleanupFns = [];
@@ -167,7 +199,7 @@
             try { fn(); } catch (e) { /* ignore */ }
         });
         cleanupFns = [];
-        document.getElementById(`${NS}-group`)?.remove();
+        document.getElementById(`${NS}-btn`)?.remove();
     }
 
     const ROUTES = [
@@ -194,14 +226,21 @@
         const sizeKey = loadSize();
         applySize(itemsContainer, sizeKey);
 
-        let group = document.getElementById(`${NS}-group`);
-        if (!group) {
-            group = document.createElement("div");
-            group.id = `${NS}-group`;
-            group.className = `${NS}-group`;
-            inputsContainer.appendChild(group);
+        let btn = document.getElementById(`${NS}-btn`);
+        if (!btn) {
+            btn = document.createElement("span");
+            btn.id = `${NS}-btn`;
+            btn.className = `sek-icon-btn ${NS}-btn`;
+            sek.insertBeforeChips(inputsContainer, btn);
         }
-        renderControl(group, itemsContainer, sizeKey);
+        renderButton(btn, sizeKey);
+
+        btn.onclick = () => {
+            const key = nextSizeKey(loadSize());
+            saveSize(key);
+            applySize(itemsContainer, key);
+            renderButton(btn, key);
+        };
 
         // Pagination/catalog swaps replace the grid's children but keep the
         // same container node (and thus our inline style) - only re-apply if
