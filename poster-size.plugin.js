@@ -2,8 +2,8 @@
  * @name PosterSize
  * @description Adds a size control (S/M/L/XL) to Discover and Library so you can choose how big the posters/cards are. Your choice is remembered.
  * @updateUrl none
- * @version 1.0.7
- * @author meli & Claude
+ * @version 1.0.8
+ * @author M-1u
  */
 
 (function () {
