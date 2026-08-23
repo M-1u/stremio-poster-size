@@ -2,7 +2,7 @@
  * @name PosterSize
  * @description Adds a size control (S/M/L/XL) to Discover and Library so you can choose how big the posters/cards are. Your choice is remembered.
  * @updateUrl none
- * @version 1.0.9
+ * @version 1.1.0
  * @author M-1u
  */
 
@@ -93,7 +93,7 @@
                 if (document.getElementById("sek-filter-wrap-fix")) return;
                 const style = document.createElement("style");
                 style.id = "sek-filter-wrap-fix";
-                style.textContent = '[class*="selectable-inputs-container-"] { flex-wrap: wrap !important; row-gap: 10px; }';
+                style.textContent = '[class*="selectable-inputs-container-"] { flex-wrap: wrap; row-gap: 10px; }';
                 document.head.appendChild(style);
             },
             // One shared look for every icon-only button any of these plugins
